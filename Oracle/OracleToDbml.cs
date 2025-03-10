@@ -1,5 +1,4 @@
-﻿using System;
-using System.Text;
+﻿using System.Text;
 using Microsoft.EntityFrameworkCore;
 using Oracle.DataDictionary;
 using Index = Oracle.DataDictionary.Index;
@@ -16,17 +15,34 @@ public class OracleToDbml
         _options = options;
     }
 
-    public string Generate()
+    public string Generate(bool dbml = true)
     {
         StringBuilder buffer = new StringBuilder();
 
-        var owner = _options.Schemas.First();
-
-        IList<Table> tables = GetTargetTables(owner);
-
-        foreach (var table in tables)
+        if (!dbml)
         {
-            GenerateTable(tables, table, buffer);
+            buffer.AppendLine("owner,table,column,column_id,type,length,scale,nullable");
+        }
+
+        List<Table> tables = new List<Table>();
+
+        foreach (var owner in _options.Schemas)
+        {
+            tables.AddRange(GetTargetTables(owner));
+        }
+
+        tables = tables.Distinct(new TableComparer()).ToList();
+
+        foreach (var table in tables.OrderBy(_ => _.Owner).ThenBy(_ => _.Name))
+        {
+            if (dbml)
+            {
+                GenerateTable(tables, table, buffer);
+            }
+            else
+            {
+                ExportTables(tables, table, buffer);
+            }
         }
 
         return buffer.ToString();
@@ -39,7 +55,7 @@ public class OracleToDbml
 
         var tables = db.TablesOwnedBy(owner)
             .OrderBy(t => t.Name)
-            .Select(t => new Table { Owner= t.Owner, Name = t.Name })
+            .Select(t => new Table { Owner = t.Owner, Name = t.Name })
             .ToList();
 
         // foreach of these tables, find any references to tables that are not in our schema
@@ -95,6 +111,69 @@ public class OracleToDbml
     {
         var context = _options.Connections.Where(kv => kv.Key == owner).Select(kv => kv.Value).FirstOrDefault();
         return context;
+    }
+
+    private void ExportTables(IList<Table> tables, Table table, StringBuilder buffer)
+    {
+        OracleDataDictionaryDbContext? db = GetDbContext(table.Owner);
+        if (db is null)
+        {
+            return;
+        }
+
+        // get table with details
+        table = db.Tables
+            .Where(t => t.Owner == table.Owner && t.Name == table.Name)
+            .Include(t => t.Columns.OrderBy(c => c.ColumnId))
+            .First();
+
+        // some tables, at least in the sample oracle schemas do not have columns?
+        // see: OE.PRODUCT_REF_LIST_NESTEDTAB
+        if (table.Columns.Count == 0)
+        {
+            return;
+        }
+
+        foreach (var column in table.Columns)
+        {
+            buffer.Append(table.Owner.ToLower());
+            buffer.Append(',');
+
+            buffer.Append(table.Name.ToLower());
+            buffer.Append(',');
+
+            buffer.Append(column.Name.ToLower());
+            buffer.Append(',');
+
+            buffer.Append(column.ColumnId);
+            buffer.Append(',');
+
+            buffer.Append(column.DataType.ToLower());
+            buffer.Append(',');
+
+            // dump out the length
+            switch (column.DataType)
+            {
+
+                case "VARCHAR2":
+                case "CLOB":
+                    buffer.Append(column.DataLength);
+                    buffer.Append(',');
+                    break;
+                case "NUMBER":
+                    buffer.Append(column.DataPrecision);
+                    buffer.Append(',');
+                    buffer.Append(column.DataScale);
+                    break;
+                default: // DATE
+                    buffer.Append(',');
+                    break;
+            }
+            buffer.Append(',');
+
+            buffer.Append(column.Nullable == "Y" ? "NULL" : "NOT NULL");
+            buffer.AppendLine();
+        }
     }
 
     private void GenerateTable(IList<Table> tables, Table table, StringBuilder buffer)

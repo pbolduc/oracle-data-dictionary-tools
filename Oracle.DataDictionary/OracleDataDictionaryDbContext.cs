@@ -49,6 +49,10 @@ public class OracleDataDictionaryDbContext : DbContext
     /// </summary>
     public DbSet<IndexColumn> IndexColumns { get; set; }
 
+    //public DbSet<Dependencies> Dependencies { get; set; }
+
+    //public DbSet<Objects> Objects { get; set; }
+
     //protected override void OnConfiguring(DbContextOptionsBuilder optionsBuilder)
     //    => optionsBuilder.LogTo(Console.WriteLine);
 

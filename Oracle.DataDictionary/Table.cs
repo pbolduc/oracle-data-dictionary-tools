@@ -1,6 +1,7 @@
 ﻿using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata.Internal;
 using System.ComponentModel.DataAnnotations.Schema;
+using System.Diagnostics;
 
 namespace Oracle.DataDictionary;
 
@@ -9,6 +10,7 @@ namespace Oracle.DataDictionary;
 /// </summary>
 [Table("ALL_TABLES")]
 [PrimaryKey(nameof(Owner),nameof(Name))]
+[DebuggerDisplay("{DebuggerToString(),nq}")]
 public class Table
 {
     /// <summary>
@@ -41,4 +43,14 @@ public class Table
     /// The constraints of the table
     /// </summary>
     public ICollection<Constraint> Constraints { get; set; } = new List<Constraint>();
+
+    private string DebuggerToString()
+    {
+        if (!string.IsNullOrEmpty(Owner))
+        {
+            return $"{Owner}.{Name}";
+        }
+
+        return Name;
+    }
 }
